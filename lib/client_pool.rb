@@ -1,11 +1,11 @@
-
 require 'thread'
 
 class ClientPool
 
   Error = Class.new(StandardError)
   TimeoutError = Class.new(StandardError)
-  attr_accessor :klass, :params, :size, :timeout, :checked_out
+
+  attr_accessor :klass, :params, :size, :timeout, :checked_out, :clients
 
   # Create a new client pool
   #
@@ -16,12 +16,13 @@ class ClientPool
 
   def initialize(*args)
     @klass = args.shift
+    raise TypeError, "expected a Class but got a #{@klass.class}" unless @klass.is_a?(Class)
     opts = args.pop
     @params = args
     # Pool size and timeout.
-    @size      = opts[:size] || 2
+    @size      = opts[:size] || 4
     @timeout   = opts[:timeout]   || 5.0
-    @eager      = opts[:eager] || false
+    @eager     = (opts[:eager] || 2).to_i
 
     # Mutex for synchronizing pool access
     @connection_mutex = Mutex.new
@@ -42,7 +43,7 @@ class ClientPool
         inst.close
       rescue => ex
         warn "Error when attempting to close client #{@klass.name}, connected to #{@params.inspect}: #{ex.inspect}"
-      end
+      end if inst.respond_to?(:close)
     end
     @params = nil
     @clients.clear
@@ -74,10 +75,9 @@ class ClientPool
     rescue => ex
       raise Error, "Failed to create client #{@klass.name}, connected to #{@params.inspect}: #{ex.inspect}"
     end
-
     @checked_out << client
     @clients << client
-    @pids[client] = Process.pid
+    @pids[client.object_id] = Process.pid
     client
   end
 
@@ -90,10 +90,10 @@ class ClientPool
   # therefore, it runs within a mutex.
   def checkout_existing_client
     client = (@clients - @checked_out).first
-    if @pids[client] != Process.pid
+    if @pids[client.object_id] != Process.pid
        @pids[client] = nil
        @clients.delete(client)
-       client.close
+       client.close if client.respond_to?(:close)
        checkout_new_client
     else
       @checked_out << client
@@ -108,22 +108,14 @@ class ClientPool
     start_time = Time.now
     loop do
       if (Time.now - start_time) > @timeout
-          raise TimeoutError, "could not checkout client within " +
-            "#{@timeout} seconds. The max pool size is currently #{@size}; " +
-            "consider increasing the pool size or timeout."
+        raise TimeoutError, "could not checkout client within #{@timeout} seconds. The max pool size is currently #{@size}; consider increasing the pool size or timeout."
       end
-
       @connection_mutex.synchronize do
-        client = if @checked_out.size < @clients.size
-                   checkout_existing_client
-                 elsif @clients.size < @size
-                   checkout_new_client
-                 end
-
-        if client
-          return client
-        else
-          # Otherwise, wait
+        if @checked_out.size < @clients.size
+          return checkout_existing_client
+        elsif @clients.size < @size
+          return checkout_new_client
+        else # Otherwise, wait
           @queue.wait(@connection_mutex)
         end
       end
@@ -134,7 +126,7 @@ class ClientPool
 
   def initialize_clientpool
     begin
-      @size.times{ checkout_new_client }
+      @eager.times{ checkout_new_client }
     ensure
       @checked_out = []
     end
