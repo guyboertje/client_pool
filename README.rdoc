@@ -1,0 +1,6 @@
+= client_pool
+
+Class for managing a pool of class instances (clients)
+
+== Using client_pool
+
