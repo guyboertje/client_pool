@@ -70,14 +70,8 @@ class ClientPool
 
   # Adds a new client to the pool and checks it out.
   def checkout_new_client
-    begin
-      client = @klass.new(*@params)
-    rescue => ex
-      raise Error, "Failed to create client #{@klass.name}, connected to #{@params.inspect}: #{ex.inspect}"
-    end
+    client = create_new_client
     @checked_out << client
-    @clients << client
-    @pids[client.object_id] = Process.pid
     client
   end
 
@@ -124,9 +118,21 @@ class ClientPool
 
   private
 
+  def create_new_client
+    _clone = Marshall.load(Marshal.dump(@params))
+    begin
+      client = @klass.new(*_clone)
+    rescue => ex
+      raise Error, "Failed to create client #{@klass.name}, connected to #{@params.inspect}: #{ex.inspect}"
+    end
+    @clients << client
+    @pids[client.object_id] = Process.pid
+    client
+  end
+
   def initialize_clientpool
     begin
-      @eager.times{ checkout_new_client }
+      @eager.times{ create_new_client }
     ensure
       @checked_out = []
     end

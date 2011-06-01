@@ -2,7 +2,7 @@
 
 spec = Gem::Specification.new do |s|
   s.name = 'client_pool'
-  s.version = '0.1.0'
+  s.version = '0.1.1'
   s.authors = ['Guy Boertje']
   s.email = 'gboertje@gowebtop.com'
   s.date = '2011-05-13'
