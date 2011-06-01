@@ -119,7 +119,7 @@ class ClientPool
   private
 
   def create_new_client
-    _clone = Marshall.load(Marshal.dump(@params))
+    _clone = Marshal.load(Marshal.dump(@params))
     begin
       client = @klass.new(*_clone)
     rescue => ex
