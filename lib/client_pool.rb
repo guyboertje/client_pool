@@ -124,12 +124,11 @@ class ClientPool
     else
       _clone = @params.dup
     end
-    client = @klass.new(*_clone)
-    #begin
-    #  client = @klass.new(*_clone)
-    #rescue => ex
-    #  raise Error, "Failed to create client #{@klass.name}, connected to #{_clone.inspect}: #{ex.inspect}"
-    #end
+    begin
+      client = @klass.new(*_clone)
+    rescue => ex
+      raise Error, "Failed to create client #{@klass.name}, connected to #{_clone.inspect}: #{ex.inspect}"
+    end
     @clients << client
     @pids[client.object_id] = Process.pid
     client
