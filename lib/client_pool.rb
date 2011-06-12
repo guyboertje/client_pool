@@ -2,7 +2,7 @@ require 'thread'
 
 class ClientPool
 
-  Error = Class.new(StandardError)
+  CreateError = Class.new(StandardError)
   TimeoutError = Class.new(StandardError)
 
   attr_accessor :creatable, :params, :size, :timeout, :checked_out, :clients
@@ -129,7 +129,10 @@ class ClientPool
         @creatable.send(@creatable_method)
       end
     rescue => ex
-      raise Error, "Failed to create client via #{@creatable.name}, connected to #{_clone.inspect}: #{ex.inspect}"
+      err_msg = "Failed to create client via #{@creatable}"
+      err_msg << ", connected to #{_clone.inspect}" if _clone
+      err_msg << ": #{ex.inspect}"
+      raise CreateError, err_msg
     end
     @clients << client
     @pids[client.object_id] = Process.pid
