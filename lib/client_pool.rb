@@ -5,7 +5,7 @@ class ClientPool
   Error = Class.new(StandardError)
   TimeoutError = Class.new(StandardError)
 
-  attr_accessor :klass, :params, :size, :timeout, :checked_out, :clients
+  attr_accessor :creatable, :params, :size, :timeout, :checked_out, :clients
 
   # Create a new client pool
   #
@@ -15,10 +15,12 @@ class ClientPool
   # other: any parameters needed for client initialisation
 
   def initialize(*args)
-    @klass = args.shift
-    raise TypeError, "expected a Class but got a #{@klass.class}" unless @klass.is_a?(Class)
+    @creatable = args.shift
+    @creatable_method = [:new, :call].select{|m| @creatable.respond_to?(m)}.first
+    raise ArgumentError, "#{@creatable.class} cannot be invoke with new or call" if @creatable_method.nil?
     opts = args.pop
     @params = args
+    @no_params = @params.empty?
     # Pool size and timeout.
     @size      = opts[:size] || 4
     @timeout   = opts[:timeout]   || 5.0
@@ -42,7 +44,7 @@ class ClientPool
       begin
         inst.close
       rescue => ex
-        warn "Error when attempting to close client #{@klass.name}, connected to #{@params.inspect}: #{ex.inspect}"
+        warn "Error when attempting to close client #{@creatable.name}, connected to #{@params.inspect}: #{ex.inspect}"
       end if inst.respond_to?(:close)
     end
     @params = nil
@@ -119,15 +121,15 @@ class ClientPool
   private
 
   def create_new_client
-    if @params.is_a?(Hash)
-      _clone = {}.merge!(@params)
-    else
-      _clone = @params.dup
-    end
     begin
-      client = @klass.new(*_clone)
+      client = unless @no_params
+        _clone = @params.is_a?(Hash) ? {}.merge!(@params) : @params.dup
+        @creatable.send(@creatable_method, *_clone)
+      else
+        @creatable.send(@creatable_method)
+      end
     rescue => ex
-      raise Error, "Failed to create client #{@klass.name}, connected to #{_clone.inspect}: #{ex.inspect}"
+      raise Error, "Failed to create client via #{@creatable.name}, connected to #{_clone.inspect}: #{ex.inspect}"
     end
     @clients << client
     @pids[client.object_id] = Process.pid
