@@ -2,7 +2,7 @@ require 'thread'
 
 class ClientPool
 
-  ClientPoolError = Class.new(StandardError)
+  ClientPoolCreateError = Class.new(StandardError)
   ClientPoolTimeoutError = Class.new(StandardError)
 
   attr_accessor :instanciatable, :params, :size, :timeout, :checked_out, :clients
@@ -17,7 +17,7 @@ class ClientPool
   def initialize(*args)
     @instanciatable = args.shift
     @init_method = [:new,:call].select{|s| @instanciatable.respond_to?(s)}.first
-    raise TypeError, "#{@instanciatable.inspect} must have a new() or a call() method" if @init_method.nil?
+    raise ArgumentError, "#{@instanciatable.inspect} must have a new() or a call() method" if @init_method.nil?
     opts = args.pop || {}
     @params = args
     @no_params == (_ = *@params).nil?
@@ -123,18 +123,17 @@ class ClientPool
   def create_new_client
     _clone = nil
     begin
-      client = if @no_params
-        @instanciatable.send(@init_method)
+      client = unless @no_params
+        _clone = @params.is_a?(Hash) ? {}.merge!(@params) : @params.dup
+        @instanciatable.send(@creatable_method, *_clone)
       else
-        if @params.is_a?(Hash)
-          _clone = {}.merge!(@params)
-        else
-          _clone = @params.dup
-        end
-        @instanciatable.send(@init_method,*_clone)
+        @instanciatable.send(@creatable_method)
       end
     rescue => ex
-      raise ClientPoolError, "Failed to create client #{@instanciatable.inspect}, connected to #{_clone.inspect}: #{ex.inspect}\nBacktrace:\n\t#{ex.backtrace.join("\n\t")}"
+      err_msg = "Failed to create client via #{@instanciatable}"
+      err_msg << ", connected to #{_clone.inspect}" unless @no_params
+      err_msg << ": #{ex.inspect}"
+      raise ClientPoolCreateError, err_msg
     end
     @clients << client
     @pids[client.object_id] = Process.pid
