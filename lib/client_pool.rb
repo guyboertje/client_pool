@@ -16,8 +16,8 @@ class ClientPool
 
   def initialize(*args)
     @instanciatable = args.shift
-    @init_method = [:new,:call].select{|s| @instanciatable.respond_to?(s)}.first
-    raise ArgumentError, "#{@instanciatable.inspect} must have a new() or a call() method" if @init_method.nil?
+    @instanciate_method = [:new,:call].select{|s| @instanciatable.respond_to?(s)}.first
+    raise ArgumentError, "#{@instanciatable.inspect} must have a new() or a call() method" if @instanciate_method.nil?
     opts = args.pop || {}
     @params = args
     @no_params == (_ = *@params).nil?
@@ -125,13 +125,13 @@ class ClientPool
     begin
       client = unless @no_params
         _clone = @params.is_a?(Hash) ? {}.merge!(@params) : @params.dup
-        @instanciatable.send(@creatable_method, *_clone)
+        @instanciatable.send(@instanciate_method, *_clone)
       else
-        @instanciatable.send(@creatable_method)
+        @instanciatable.send(@instanciate_method)
       end
     rescue => ex
       err_msg = "Failed to create client via #{@instanciatable}"
-      err_msg << ", connected to #{_clone.inspect}" unless @no_params
+      err_msg << ", with parameters #{_clone.inspect}" unless @no_params
       err_msg << ": #{ex.inspect}"
       raise ClientPoolCreateError, err_msg
     end

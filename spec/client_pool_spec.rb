@@ -3,7 +3,7 @@ require "spec_helper"
 describe ClientPool do
 
   it "should fail to create a pool of uninitializable objects" do
-    lambda {ClientPool.new(100,{})}.should raise_error(TypeError)
+    lambda {ClientPool.new(100,{})}.should raise_error(ArgumentError)
   end
 
   it "should create a pool of objects" do
