@@ -2,10 +2,10 @@ require 'thread'
 
 class ClientPool
 
-  Error = Class.new(StandardError)
-  TimeoutError = Class.new(StandardError)
+  ClientPoolError = Class.new(StandardError)
+  ClientPoolTimeoutError = Class.new(StandardError)
 
-  attr_accessor :klass, :params, :size, :timeout, :checked_out, :clients
+  attr_accessor :instanciatable, :params, :size, :timeout, :checked_out, :clients
 
   # Create a new client pool
   #
@@ -15,10 +15,13 @@ class ClientPool
   # other: any parameters needed for client initialisation
 
   def initialize(*args)
-    @klass = args.shift
-    raise TypeError, "expected a Class but got a #{@klass.class}" unless @klass.is_a?(Class)
-    opts = args.pop
+    @instanciatable = args.shift
+    @init_method = [:new,:call].select{|s| @instanciatable.respond_to?(s)}.first
+    raise TypeError, "#{@instanciatable.inspect} must have a new() or a call() method" if @init_method.nil?
+    opts = args.pop || {}
     @params = args
+    @no_params == (_ = *@params).nil?
+
     # Pool size and timeout.
     @size      = opts[:size] || 4
     @timeout   = opts[:timeout]   || 5.0
@@ -42,7 +45,7 @@ class ClientPool
       begin
         inst.close
       rescue => ex
-        warn "Error when attempting to close client #{@klass.name}, connected to #{@params.inspect}: #{ex.inspect}"
+        warn "Error when attempting to close client #{@instanciatable.name}, connected to #{@params.inspect}: #{ex.inspect}"
       end if inst.respond_to?(:close)
     end
     @params = nil
@@ -50,7 +53,6 @@ class ClientPool
     @pids.clear
     @checked_out.clear
   end
-
   # Return a client to the pool.
   # Allow for closing a client
   def checkin(inst, close=false)
@@ -102,7 +104,7 @@ class ClientPool
     start_time = Time.now
     loop do
       if (Time.now - start_time) > @timeout
-        raise TimeoutError, "could not checkout client within #{@timeout} seconds. The max pool size is currently #{@size}; consider increasing the pool size or timeout."
+        raise ClientPoolTimeoutError, "could not checkout client within #{@timeout} seconds. The max pool size is currently #{@size}; consider increasing the pool size or timeout."
       end
       @connection_mutex.synchronize do
         if @checked_out.size < @clients.size
@@ -119,15 +121,20 @@ class ClientPool
   private
 
   def create_new_client
-    if @params.is_a?(Hash)
-      _clone = {}.merge!(@params)
-    else
-      _clone = @params.dup
-    end
+    _clone = nil
     begin
-      client = @klass.new(*_clone)
+      client = if @no_params
+        @instanciatable.send(@init_method)
+      else
+        if @params.is_a?(Hash)
+          _clone = {}.merge!(@params)
+        else
+          _clone = @params.dup
+        end
+        @instanciatable.send(@init_method,*_clone)
+      end
     rescue => ex
-      raise Error, "Failed to create client #{@klass.name}, connected to #{_clone.inspect}: #{ex.inspect}"
+      raise ClientPoolError, "Failed to create client #{@instanciatable.inspect}, connected to #{_clone.inspect}: #{ex.inspect}\nBacktrace:\n\t#{ex.backtrace.join("\n\t")}"
     end
     @clients << client
     @pids[client.object_id] = Process.pid
