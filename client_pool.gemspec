@@ -12,5 +12,4 @@ spec = Gem::Specification.new do |s|
   s.require_path = 'lib'
   s.files = %W[Rakefile README.rdoc LICENSE lib/client_pool.rb spec/spec_helper.rb spec/client_pool_spec.rb]
   s.test_files = []
-  s.has_rdoc = false
 end
